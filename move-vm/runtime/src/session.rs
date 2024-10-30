@@ -407,8 +407,6 @@ impl<'r, 'l> Session<'r, 'l> {
         function_name: &IdentStr,
         type_arguments: &[TypeTag],
     ) -> VMResult<LoadedFunctionInstantiation> {
-        println!("Rust!!! load_function: {:?}", module_id);
-
         let (_, _, instantiation) = self.runtime.loader.load_function(
             module_id,
             function_name,
