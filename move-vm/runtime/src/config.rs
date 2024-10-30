@@ -9,7 +9,7 @@ use move_bytecode_verifier::VerifierConfig;
 use serde::Serialize;
 
 pub const DEFAULT_MAX_VALUE_NEST_DEPTH: u64 = 128;
-pub const TIME_THRESHOLD_MILLISECOND: u128 = 10;
+pub const TIME_THRESHOLD_MILLISECOND: u128 = 2;
 
 /// Dynamic config options for the Move VM.
 #[derive(Clone, Serialize)]
