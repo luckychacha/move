@@ -120,11 +120,11 @@ impl VMRuntime {
                     blob,
                     &self.loader.vm_config().deserializer_config,
                 )
-                .map(|m| {
-                    checksums.insert(m.self_id(), checksum);
+                    .map(|m| {
+                        checksums.insert(m.self_id(), checksum);
 
-                    m
-                })
+                        m
+                    })
             })
             .collect::<PartialVMResult<Vec<_>>>()
         {
@@ -149,7 +149,7 @@ impl VMRuntime {
                     IndexKind::AddressIdentifier,
                     module.self_handle_idx().0,
                 )
-                .finish(Location::Undefined));
+                    .finish(Location::Undefined));
             }
         }
 
@@ -284,7 +284,7 @@ impl VMRuntime {
                 return Err(PartialVMError::new(
                     StatusCode::INVALID_PARAM_TYPE_FOR_DESERIALIZATION,
                 )
-                .with_message("[VM] failed to get layout from type".to_string()));
+                    .with_message("[VM] failed to get layout from type".to_string()));
             }
         };
 
@@ -518,12 +518,22 @@ impl VMRuntime {
         extensions: &mut NativeContextExtensions,
         bypass_declared_entry_check: bool,
     ) -> VMResult<SerializedReturnValues> {
+        // if execute_function's load_function time usage for 500ms, print a message
+        let start = std::time::Instant::now();
         // load the function
         let (module, function, instantiation) =
             self.loader
                 .load_function(module, function_name, &ty_args, session_cache)?;
-
-        self.execute_function_instantiation(
+        let elapsed = start.elapsed();
+        if elapsed.as_millis() > 500 {
+            println!(
+                "Rust4: execute_function's load_function time usage: {}ms",
+                elapsed.as_millis()
+            );
+        }
+        // if execute_function's execute_function_instantiation time usage for 500ms, print a message
+        let start = std::time::Instant::now();
+        let res = self.execute_function_instantiation(
             LoadedFunction { module, function },
             instantiation,
             serialized_args,
@@ -532,7 +542,16 @@ impl VMRuntime {
             gas_meter,
             extensions,
             bypass_declared_entry_check,
-        )
+        );
+        let elapsed = start.elapsed();
+        if elapsed.as_millis() > 500 {
+            println!(
+                "Rust5: execute_function's execute_function_instantiation time usage: {}ms",
+                elapsed.as_millis()
+            );
+        }
+
+        res
     }
 
     #[allow(clippy::too_many_arguments)]

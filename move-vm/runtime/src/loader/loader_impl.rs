@@ -134,7 +134,7 @@ impl Loader {
                     &self.module_cache.read(),
                     session_storage,
                 )
-                .map_err(|e| e.finish(Location::Script))?;
+                    .map_err(|e| e.finish(Location::Script))?;
 
                 // insert script to cache
                 let cached = locked_script_cache.insert(checksum, script);
@@ -159,10 +159,10 @@ impl Loader {
 
         if self.vm_config.type_size_limit
             && type_arguments
-                .iter()
-                .map(|loaded_ty| self.count_type_nodes(loaded_ty))
-                .sum::<u64>()
-                > MAX_TYPE_INSTANTIATION_NODES
+            .iter()
+            .map(|loaded_ty| self.count_type_nodes(loaded_ty))
+            .sum::<u64>()
+            > MAX_TYPE_INSTANTIATION_NODES
         {
             return Err(
                 PartialVMError::new(StatusCode::TOO_MANY_TYPE_NODES).finish(Location::Script)
@@ -264,10 +264,26 @@ impl Loader {
             let checksum = session_storage
                 .load_checksum(id)
                 .map_err(|e| e.finish(Location::Module(id.clone())))?;
-
+            // if this read() wait for 500 milliseconds print a message
+            let start = std::time::Instant::now();
             if let Some(cached) = self.module_cache.read().get(&checksum) {
+                let duration = start.elapsed();
+                if duration.as_millis() > 500 {
+                    println!("Rust0: load_compiled_module's read() wait for 500 milliseconds");
+                }
+                // if this write() wait for 500 milliseconds print a message
+                let start = std::time::Instant::now();
                 self.module_cache_hits.write().record_hit(&checksum);
+                let duration = start.elapsed();
+                if duration.as_millis() > 500 {
+                    println!("Rust2: load_compiled_module's write() wait for 500 milliseconds");
+                }
                 return Ok((cached.size, checksum, cached.module.clone()));
+            } else {
+                let duration = start.elapsed();
+                if duration.as_millis() > 500 {
+                    println!("Rust1: load_compiled_module's read() wait for 500 milliseconds");
+                }
             }
         }
 
@@ -291,7 +307,13 @@ impl Loader {
         function_name: &IdentStr,
         session_storage: &dyn SessionStorage,
     ) -> VMResult<(Arc<Module>, Arc<Function>, Vec<Type>, Vec<Type>)> {
+        //  if load_module's time usage is more than 500 milliseconds print a message
+        let start = std::time::Instant::now();
         let module = self.load_module(module_id, session_storage)?;
+        let duration = start.elapsed();
+        if duration.as_millis() > 500 {
+            println!("Rust3: load_function_without_type_args's load_module() wait for 500 milliseconds");
+        }
         let func = module
             .resolve_function_by_name(function_name)
             .map_err(|e| e.finish(Location::Undefined))?;
@@ -350,9 +372,9 @@ impl Loader {
                 *ret_id == *expected_id
                     && ret_fields.len() == expected_fields.len()
                     && ret_fields
-                        .iter()
-                        .zip(expected_fields.iter())
-                        .all(|types| Self::match_return_type(types.0, types.1, map))
+                    .iter()
+                    .zip(expected_fields.iter())
+                    .all(|types| Self::match_return_type(types.0, types.1, map))
             }
             // For primitive types we need to assure the types match
             (Type::U8, Type::U8)
@@ -596,7 +618,7 @@ impl Loader {
                             .map(|m| m.compiled_module().immediate_dependencies())
                     }
                 }
-                .ok_or_else(|| PartialVMError::new(StatusCode::MISSING_DEPENDENCY))
+                    .ok_or_else(|| PartialVMError::new(StatusCode::MISSING_DEPENDENCY))
             },
             |module_id| {
                 if bundle_unverified.contains(module_id) {
@@ -616,7 +638,7 @@ impl Loader {
                                 .map(|m| m.compiled_module().immediate_friends())
                         }
                     }
-                    .ok_or_else(|| PartialVMError::new(StatusCode::MISSING_DEPENDENCY))
+                        .ok_or_else(|| PartialVMError::new(StatusCode::MISSING_DEPENDENCY))
                 }
             },
         )
@@ -718,7 +740,7 @@ impl Loader {
             &locked_module_cache,
             session_storage,
         )
-        .map_err(|e| e.finish(Location::Undefined))?;
+            .map_err(|e| e.finish(Location::Undefined))?;
 
         let checksum = module.checksum;
         let module_ref = locked_module_cache.insert(checksum, module);
@@ -737,7 +759,8 @@ impl Loader {
         if self.removed_modules.read().len() < self.vm_config.module_cache_capacity / 10 {
             return;
         }
-
+        // if these write() time usage is more than 500 milliseconds print a message
+        let start = std::time::Instant::now();
         let mut type_cache = self.type_cache.write();
         let mut module_cache = self.module_cache.write();
         let mut removed_modules = self.removed_modules.write();
@@ -751,8 +774,17 @@ impl Loader {
             type_cache.remove_type_cache(checksum);
             module_cache.remove(checksum);
         }
+        let duration = start.elapsed();
+        if duration.as_millis() > 500 {
+            println!("Rust6: flush_unused_module_cache's write() wait for 500 milliseconds");
+        }
 
+        let start = std::time::Instant::now();
         removed_modules.clear();
+        let duration = start.elapsed();
+        if duration.as_millis() > 500 {
+            println!("Rust7: flush_unused_module_cache's removed_modules() wait for 500 milliseconds");
+        }
     }
 
     // The interface to cleanup the unused modules from the cache.
@@ -761,6 +793,7 @@ impl Loader {
         if self.removed_scripts.read().len() < self.vm_config.script_cache_capacity / 10 {
             return;
         }
+        let start = std::time::Instant::now();
 
         let mut script_cache = self.script_cache.write();
         let mut removed_scripts = self.removed_scripts.write();
@@ -773,8 +806,16 @@ impl Loader {
 
             script_cache.remove(checksum);
         }
-
+        let duration = start.elapsed();
+        if duration.as_millis() > 500 {
+            println!("Rust8: flush_unused_script_cache's write() wait for 500 milliseconds");
+        }
+        let start = std::time::Instant::now();
         removed_scripts.clear();
+        let duration = start.elapsed();
+        if duration.as_millis() > 500 {
+            println!("Rust9: flush_unused_module_cache's removed_modules() wait for 500 milliseconds");
+        }
     }
 
     // Load the transitive closure of the target module first, and then verify that the modules in
@@ -818,7 +859,7 @@ impl Loader {
             bundle_verified,
             bundle_unverified,
         )
-        .map_err(expect_no_verification_errors)?;
+            .map_err(expect_no_verification_errors)?;
         Ok(module_ref)
     }
 
@@ -1628,8 +1669,8 @@ impl Loader {
 
         (id.module_id.address().eq(&AccountAddress::ONE)
             && id.module_id.name().eq(ident_str!("aggregator_v2")))
-        .then_some(ident_str_to_kind(id.name.as_ident_str()))
-        .flatten()
+            .then_some(ident_str_to_kind(id.name.as_ident_str()))
+            .flatten()
     }
 
     fn type_to_type_layout_impl(
