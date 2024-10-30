@@ -45,6 +45,7 @@ use std::{
     fmt::Write,
     sync::Arc,
 };
+use crate::config::TIME_THRESHOLD_MILLISECOND;
 
 macro_rules! set_err_info {
     ($frame:ident, $e:expr) => {{
@@ -132,6 +133,7 @@ impl Interpreter {
         ty_args: Vec<Type>,
         args: Vec<Value>,
     ) -> VMResult<Vec<Value>> {
+        let start = std::time::Instant::now();
         let mut locals = Locals::new(function.local_count());
         for (i, value) in args.into_iter().enumerate() {
             locals
@@ -144,37 +146,79 @@ impl Interpreter {
                 )
                 .map_err(|e| self.set_location(e))?;
         }
+        let duration = start.elapsed();
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!("Rust16: execute_main: locals.store_loc: {:?}", duration);
+        }
+
+        let start = std::time::Instant::now();
 
         let mut current_frame = self
             .make_new_frame(gas_meter, loader, checksum_store, function, ty_args, locals)
             .map_err(|err| self.set_location(err))?;
+        let duration = start.elapsed();
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!("Rust17: execute_main: make_new_frame: {:?}", duration);
+        }
+        let start = std::time::Instant::now();
         // Access control for the new frame.
         self.access_control
             .enter_function(&current_frame, current_frame.function.as_ref())
             .map_err(|e| self.set_location(e))?;
+        let duration = start.elapsed();
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!("Rust18: execute_main: enter_function: {:?}", duration);
+        }
         loop {
+            let start = std::time::Instant::now();
+
             let resolver = current_frame.resolver(loader, checksum_store);
+            let duration = start.elapsed();
+            if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                println!("Rust19: execute_main: resolver: {:?}", duration);
+            }
+            let start = std::time::Instant::now();
             let exit_code =
                 current_frame //self
                     .execute_code(&resolver, &mut self, data_store, checksum_store, gas_meter)
                     .map_err(|err| self.maybe_core_dump(err, &current_frame))?;
+
+            let duration = start.elapsed();
+            if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                println!("Rust20: execute_main: execute_code: {:?}", duration);
+            }
             match exit_code {
                 ExitCode::Return => {
+                    let start = std::time::Instant::now();
+
                     let non_ref_vals = current_frame
                         .locals
                         .drop_all_values()
                         .map(|(_idx, val)| val)
                         .collect::<Vec<_>>();
-
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust21: execute_main: drop_all_values: {:?}", duration);
+                    }
                     // TODO: Check if the error location is set correctly.
+                    let start = std::time::Instant::now();
+
                     gas_meter
                         .charge_drop_frame(non_ref_vals.iter())
                         .map_err(|e| self.set_location(e))?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust22: execute_main: charge_drop_frame: {:?}", duration);
+                    }
+                    let start = std::time::Instant::now();
 
                     self.access_control
                         .exit_function(current_frame.function.as_ref())
                         .map_err(|e| self.set_location(e))?;
-
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust23: execute_main: exit_function: {:?}", duration);
+                    }
                     if let Some(frame) = self.call_stack.pop() {
                         // Note: the caller will find the callee's return values at the top of the shared operand stack
                         current_frame = frame;
@@ -182,21 +226,36 @@ impl Interpreter {
                     } else {
                         // end of execution. `self` should no longer be used afterward
                         // Clean up access control
+                        let start = std::time::Instant::now();
                         self.access_control
                             .exit_function(current_frame.function.as_ref())
                             .map_err(|e| self.set_location(e))?;
+                        let duration = start.elapsed();
+                        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                            println!("Rust24: execute_main: exit_function: {:?}", duration);
+                        }
                         return Ok(self.operand_stack.value);
                     }
                 }
                 ExitCode::Call(fh_idx) => {
+                    let start = std::time::Instant::now();
                     let func = resolver
                         .function_from_handle(fh_idx, checksum_store)
                         .map_err(|e| self.set_location(e))?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("*Rust25: execute_main: function_from_handle: {:?}", duration);
+                    }
+                    let start = std::time::Instant::now();
 
                     if self.paranoid_type_checks {
                         self.check_friend_or_private_call(&current_frame.function, &func)?;
                     }
-
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust26: execute_main: check_friend_or_private_call: {:?}", duration);
+                    }
+                    let start = std::time::Instant::now();
                     // Charge gas
                     let module_id = func
                         .module_id()
@@ -215,8 +274,13 @@ impl Interpreter {
                             (func.local_count() as u64).into(),
                         )
                         .map_err(|e| set_err_info!(current_frame, e))?;
-
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust27: execute_main: charge_call: {:?}", duration);
+                    }
                     if func.is_native() {
+                        let start = std::time::Instant::now();
+
                         self.call_native(
                             &resolver,
                             data_store,
@@ -227,37 +291,75 @@ impl Interpreter {
                             vec![],
                         )?;
                         current_frame.pc += 1; // advance past the Call instruction in the caller
+                        let duration = start.elapsed();
+                        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                            println!("Rust28: execute_main: call_native: {:?}", duration);
+                        }
                         continue;
                     }
+                    let start = std::time::Instant::now();
+
                     let frame = self
                         .make_call_frame(gas_meter, loader, checksum_store, func, vec![])
                         .map_err(|e| self.set_location(e))
                         .map_err(|err| self.maybe_core_dump(err, &current_frame))?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust29: execute_main: make_call_frame: {:?}", duration);
+                    }
+                    let start = std::time::Instant::now();
 
                     // Access control for the new frame.
                     self.access_control
                         .enter_function(&frame, frame.function.as_ref())
                         .map_err(|e| self.set_location(e))?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust30: execute_main: enter_function: {:?}", duration);
+                    }
+                    let start = std::time::Instant::now();
 
                     self.call_stack.push(current_frame).map_err(|frame| {
                         let err = PartialVMError::new(StatusCode::CALL_STACK_OVERFLOW);
                         let err = set_err_info!(frame, err);
                         self.maybe_core_dump(err, &frame)
                     })?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust31: execute_main: push: {:?}", duration);
+                    }
                     // Note: the caller will find the the callee's return values at the top of the shared operand stack
                     current_frame = frame;
                 }
                 ExitCode::CallGeneric(idx) => {
+                    let start = std::time::Instant::now();
+
                     let ty_args = resolver
                         .instantiate_generic_function(Some(gas_meter), idx, current_frame.ty_args())
                         .map_err(|e| set_err_info!(current_frame, e))?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust32: execute_main: instantiate_generic_function: {:?}", duration);
+                    }
+                    let start = std::time::Instant::now();
+
                     let func = resolver
                         .function_from_instantiation(idx, checksum_store)
                         .map_err(|e| self.set_location(e))?;
-
-                    if self.paranoid_type_checks {
-                        self.check_friend_or_private_call(&current_frame.function, &func)?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust33: execute_main: function_from_instantiation: {:?}", duration);
                     }
+                    if self.paranoid_type_checks {
+                        let start = std::time::Instant::now();
+
+                        self.check_friend_or_private_call(&current_frame.function, &func)?;
+                        let duration = start.elapsed();
+                        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                            println!("Rust34: execute_main: check_friend_or_private_call: {:?}", duration);
+                        }
+                    }
+                    let start = std::time::Instant::now();
 
                     // Charge gas
                     let module_id = func
@@ -267,6 +369,12 @@ impl Interpreter {
                                 .with_message("Failed to get native function module id".to_string())
                         })
                         .map_err(|e| set_err_info!(current_frame, e))?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust35: execute_main: module_id: {:?}", duration);
+                    }
+                    let start = std::time::Instant::now();
+
                     gas_meter
                         .charge_call_generic(
                             module_id,
@@ -282,8 +390,13 @@ impl Interpreter {
                             (func.local_count() as u64).into(),
                         )
                         .map_err(|e| set_err_info!(current_frame, e))?;
-
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust36: execute_main: charge_call_generic: {:?}", duration);
+                    }
                     if func.is_native() {
+                        let start = std::time::Instant::now();
+
                         self.call_native(
                             &resolver,
                             data_store,
@@ -294,23 +407,43 @@ impl Interpreter {
                             ty_args,
                         )?;
                         current_frame.pc += 1; // advance past the Call instruction in the caller
+                        let duration = start.elapsed();
+                        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                            println!("Rust37: execute_main: call_native: {:?}", duration);
+                        }
                         continue;
                     }
+                    let start = std::time::Instant::now();
+
                     let frame = self
                         .make_call_frame(gas_meter, loader, checksum_store, func, ty_args)
                         .map_err(|e| self.set_location(e))
                         .map_err(|err| self.maybe_core_dump(err, &current_frame))?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust38: execute_main: make_call_frame: {:?}", duration);
+                    }
+                    let start = std::time::Instant::now();
 
                     // Access control for the new frame.
                     self.access_control
                         .enter_function(&frame, frame.function.as_ref())
                         .map_err(|e| self.set_location(e))?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust39: execute_main: enter_function: {:?}", duration);
+                    }
+                    let start = std::time::Instant::now();
 
                     self.call_stack.push(current_frame).map_err(|frame| {
                         let err = PartialVMError::new(StatusCode::CALL_STACK_OVERFLOW);
                         let err = set_err_info!(frame, err);
                         self.maybe_core_dump(err, &frame)
                     })?;
+                    let duration = start.elapsed();
+                    if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+                        println!("Rust40: execute_main: push: {:?}", duration);
+                    }
                     current_frame = frame;
                 }
             }
