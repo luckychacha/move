@@ -308,12 +308,12 @@ impl Loader {
         session_storage: &dyn SessionStorage,
     ) -> VMResult<(Arc<Module>, Arc<Function>, Vec<Type>, Vec<Type>)> {
         //  if load_module's time usage is more than 500 milliseconds print a message
-        let start = std::time::Instant::now();
+        // let start = std::time::Instant::now();
         let module = self.load_module(module_id, session_storage)?;
-        let duration = start.elapsed();
-        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
-            println!("Rust3: load_function_without_type_args's load_module() wait for {} milliseconds", duration.as_millis());
-        }
+        // let duration = start.elapsed();
+        // if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+        //     println!("Rust3: load_function_without_type_args's load_module() wait for {} milliseconds", duration.as_millis());
+        // }
         let func = module
             .resolve_function_by_name(function_name)
             .map_err(|e| e.finish(Location::Undefined))?;
@@ -832,16 +832,27 @@ impl Loader {
             .load_checksum(id)
             .map_err(|e| e.finish(Location::Undefined))?;
 
+        let start = std::time::Instant::now();
         if let Some(cached) = self.module_cache.read().get(&checksum) {
             self.module_cache_hits.write().record_hit(&checksum);
             return Ok(cached);
         }
+        let duration = start.elapsed();
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!("Rust10: load_module_internal's read() wait for {} milliseconds", duration.as_millis());
+        }
 
+        let start = std::time::Instant::now();
         // create cache hits entry
         if let Some(removed) = self.module_cache_hits.write().create(checksum) {
             self.removed_modules.write().push(removed);
         }
+        let duration = start.elapsed();
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!("Rust11: load_module_internal's write() wait for {} milliseconds", duration.as_millis());
+        }
 
+        let start = std::time::Instant::now();
         // otherwise, load the transitive closure of the target module
         let module_ref = self.load_and_verify_module_and_dependencies_and_friends(
             id,
@@ -860,6 +871,12 @@ impl Loader {
             bundle_unverified,
         )
             .map_err(expect_no_verification_errors)?;
+
+        let duration = start.elapsed();
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!("Rust12: load_module_internal's load_and_verify_module_and_dependencies_and_friends() wait for {} milliseconds", duration.as_millis());
+        }
+
         Ok(module_ref)
     }
 

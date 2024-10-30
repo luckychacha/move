@@ -444,6 +444,7 @@ impl VMRuntime {
         gas_meter: &mut impl GasMeter,
         extensions: &mut NativeContextExtensions,
     ) -> VMResult<SerializedReturnValues> {
+        let start = std::time::Instant::now();
         let arg_types = param_types
             .into_iter()
             .map(|ty| ty.subst(&ty_args))
@@ -465,7 +466,11 @@ impl VMRuntime {
             .map(|ty| ty.subst(&ty_args))
             .collect::<PartialVMResult<Vec<_>>>()
             .map_err(|err| err.finish(Location::Undefined))?;
-
+        let duration = start.elapsed();
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!("Rust13 execute_function_impl's deserialize_args time usage: {}ms", duration.as_millis());
+        }
+        let start = std::time::Instant::now();
         let return_values = Interpreter::entrypoint(
             func,
             ty_args,
@@ -476,6 +481,12 @@ impl VMRuntime {
             extensions,
             &self.loader,
         )?;
+        let duration = start.elapsed();
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!("Rust14 execute_function_impl's Interpreter::entrypoint time usage: {}ms", duration.as_millis());
+        }
+
+        let start = std::time::Instant::now();
 
         let serialized_return_values = self
             .serialize_return_values(checksum_store, &return_types, return_values)
@@ -499,7 +510,10 @@ impl VMRuntime {
 
         // locals should not be dropped until all return values are serialized
         std::mem::drop(dummy_locals);
-
+        let duration = start.elapsed();
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!("Rust15 execute_function_impl's serialize_return_values time usage: {}ms", duration.as_millis());
+        }
         Ok(SerializedReturnValues {
             mutable_reference_outputs: serialized_mut_ref_outputs,
             return_values: serialized_return_values,
@@ -520,20 +534,20 @@ impl VMRuntime {
         bypass_declared_entry_check: bool,
     ) -> VMResult<SerializedReturnValues> {
         // if execute_function's load_function time usage for 500ms, print a message
-        let start = std::time::Instant::now();
+        // let start = std::time::Instant::now();
         // load the function
         let (module, function, instantiation) =
             self.loader
                 .load_function(module, function_name, &ty_args, session_cache)?;
-        let elapsed = start.elapsed();
-        if elapsed.as_millis() > TIME_THRESHOLD_MILLISECOND {
-            println!(
-                "Rust4: execute_function's load_function time usage: {}ms",
-                elapsed.as_millis()
-            );
-        }
+        // let elapsed = start.elapsed();
+        // if elapsed.as_millis() > TIME_THRESHOLD_MILLISECOND {
+        //     println!(
+        //         "Rust4: execute_function's load_function time usage: {}ms",
+        //         elapsed.as_millis()
+        //     );
+        // }
         // if execute_function's execute_function_instantiation time usage for 500ms, print a message
-        let start = std::time::Instant::now();
+        // let start = std::time::Instant::now();
         let res = self.execute_function_instantiation(
             LoadedFunction { module, function },
             instantiation,
@@ -544,13 +558,13 @@ impl VMRuntime {
             extensions,
             bypass_declared_entry_check,
         );
-        let elapsed = start.elapsed();
-        if elapsed.as_millis() > TIME_THRESHOLD_MILLISECOND {
-            println!(
-                "Rust5: execute_function's execute_function_instantiation time usage: {}ms",
-                elapsed.as_millis()
-            );
-        }
+        // let elapsed = start.elapsed();
+        // if elapsed.as_millis() > TIME_THRESHOLD_MILLISECOND {
+        //     println!(
+        //         "Rust5: execute_function's execute_function_instantiation time usage: {}ms",
+        //         elapsed.as_millis()
+        //     );
+        // }
 
         res
     }
@@ -568,12 +582,20 @@ impl VMRuntime {
         extensions: &mut NativeContextExtensions,
         bypass_declared_entry_check: bool,
     ) -> VMResult<SerializedReturnValues> {
+        let start = std::time::Instant::now();
         // load the function
         let LoadedFunctionInstantiation {
             type_arguments,
             parameters,
             return_,
         } = function_instantiation;
+        let elapsed = start.elapsed();
+        if elapsed.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!(
+                "Rust6 execute_function_instantiation's load_function time usage: {}ms",
+                elapsed.as_millis()
+            );
+        }
 
         use move_binary_format::{binary_views::BinaryIndexedView, file_format::SignatureIndex};
         fn check_is_entry(
@@ -598,14 +620,23 @@ impl VMRuntime {
 
         let LoadedFunction { module, function } = func;
 
+        let start = std::time::Instant::now();
         script_signature::verify_module_function_signature_by_name(
             module.compiled_module(),
             IdentStr::new(function.as_ref().name()).expect(""),
             additional_signature_checks,
         )?;
+        let elapsed = start.elapsed();
+        if elapsed.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!(
+                "Rust7 execute_function_instantiation's verify_module_function_signature_by_name time usage: {}ms",
+                elapsed.as_millis()
+            );
+        }
 
+        let start = std::time::Instant::now();
         // execute the function
-        self.execute_function_impl(
+        let res = self.execute_function_impl(
             function,
             type_arguments,
             parameters,
@@ -615,7 +646,16 @@ impl VMRuntime {
             checksum_store,
             gas_meter,
             extensions,
-        )
+        );
+        let elapsed = start.elapsed();
+        if elapsed.as_millis() > TIME_THRESHOLD_MILLISECOND {
+            println!(
+                "Rust8 execute_function_instantiation's execute_function_impl time usage: {}ms",
+                elapsed.as_millis()
+            );
+        }
+
+        res
     }
 
     #[allow(clippy::too_many_arguments)]
