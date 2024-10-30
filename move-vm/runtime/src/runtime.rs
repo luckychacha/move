@@ -41,6 +41,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     sync::Arc,
 };
+use crate::config::TIME_THRESHOLD_MILLISECOND;
 
 /// An instantiation of the MoveVM.
 pub struct VMRuntime {
@@ -525,7 +526,7 @@ impl VMRuntime {
             self.loader
                 .load_function(module, function_name, &ty_args, session_cache)?;
         let elapsed = start.elapsed();
-        if elapsed.as_millis() > 500 {
+        if elapsed.as_millis() > TIME_THRESHOLD_MILLISECOND {
             println!(
                 "Rust4: execute_function's load_function time usage: {}ms",
                 elapsed.as_millis()
@@ -544,7 +545,7 @@ impl VMRuntime {
             bypass_declared_entry_check,
         );
         let elapsed = start.elapsed();
-        if elapsed.as_millis() > 500 {
+        if elapsed.as_millis() > TIME_THRESHOLD_MILLISECOND {
             println!(
                 "Rust5: execute_function's execute_function_instantiation time usage: {}ms",
                 elapsed.as_millis()

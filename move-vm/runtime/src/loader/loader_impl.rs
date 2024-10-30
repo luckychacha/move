@@ -38,7 +38,7 @@ use crate::{
     config::VMConfig, logging::expect_no_verification_errors, module_traversal::TraversalContext,
     native_functions::NativeFunctions, session::LoadedFunctionInstantiation,
 };
-
+use crate::config::TIME_THRESHOLD_MILLISECOND;
 use super::{
     cache::{CacheHitRecords, ModuleCache, ScriptCache, StructLayoutInfoCacheItem, TypeCache},
     function::{Function, FunctionHandle, LoadedFunction},
@@ -268,20 +268,20 @@ impl Loader {
             let start = std::time::Instant::now();
             if let Some(cached) = self.module_cache.read().get(&checksum) {
                 let duration = start.elapsed();
-                if duration.as_millis() > 500 {
+                if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
                     println!("Rust0: load_compiled_module's read() wait for 500 milliseconds");
                 }
                 // if this write() wait for 500 milliseconds print a message
                 let start = std::time::Instant::now();
                 self.module_cache_hits.write().record_hit(&checksum);
                 let duration = start.elapsed();
-                if duration.as_millis() > 500 {
+                if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
                     println!("Rust2: load_compiled_module's write() wait for 500 milliseconds");
                 }
                 return Ok((cached.size, checksum, cached.module.clone()));
             } else {
                 let duration = start.elapsed();
-                if duration.as_millis() > 500 {
+                if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
                     println!("Rust1: load_compiled_module's read() wait for 500 milliseconds");
                 }
             }
@@ -311,7 +311,7 @@ impl Loader {
         let start = std::time::Instant::now();
         let module = self.load_module(module_id, session_storage)?;
         let duration = start.elapsed();
-        if duration.as_millis() > 500 {
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
             println!("Rust3: load_function_without_type_args's load_module() wait for 500 milliseconds");
         }
         let func = module
@@ -775,14 +775,14 @@ impl Loader {
             module_cache.remove(checksum);
         }
         let duration = start.elapsed();
-        if duration.as_millis() > 500 {
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
             println!("Rust6: flush_unused_module_cache's write() wait for 500 milliseconds");
         }
 
         let start = std::time::Instant::now();
         removed_modules.clear();
         let duration = start.elapsed();
-        if duration.as_millis() > 500 {
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
             println!("Rust7: flush_unused_module_cache's removed_modules() wait for 500 milliseconds");
         }
     }
@@ -807,13 +807,13 @@ impl Loader {
             script_cache.remove(checksum);
         }
         let duration = start.elapsed();
-        if duration.as_millis() > 500 {
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
             println!("Rust8: flush_unused_script_cache's write() wait for 500 milliseconds");
         }
         let start = std::time::Instant::now();
         removed_scripts.clear();
         let duration = start.elapsed();
-        if duration.as_millis() > 500 {
+        if duration.as_millis() > TIME_THRESHOLD_MILLISECOND {
             println!("Rust9: flush_unused_module_cache's removed_modules() wait for 500 milliseconds");
         }
     }
